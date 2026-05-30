@@ -3,41 +3,97 @@
 from __future__ import annotations
 
 from hmem.config import HMemConfig
+from hmem.core.graph import KnowledgeGraph
+from hmem.core.tree import TemporalSemanticTree
+from hmem.indexing.indexer import Indexer
+from hmem.llm.adapter import LLMAdapter
+from hmem.llm.openrouter import OpenRouterAdapter
+from hmem.retrieval.engine import RetrievalEngine
 from hmem.types import MemoryFragment, RetrievalResult
+from hmem.utils.embeddings import SentenceEmbedder
 
 
 class HMemEngine:
-    """Main H-Mem engine.  Wraps the full indexing + retrieval pipeline.
+    """Main H-Mem engine. Wraps the full indexing + retrieval pipeline."""
 
-    This is a stub that will be fleshed out as we implement each module.
-    """
+    def __init__(self, config: HMemConfig | None = None) -> None:
+        self.config = config or HMemConfig()
+        self.llm = self._init_llm()
+        self.embedder = SentenceEmbedder(self.config)
 
-    def __init__(self, config: HMemConfig) -> None:
-        self.config = config
-        # TODO: wire up Indexer, Retriever, LLM adapter, embedder, tree, graph
-        self._indexer: object | None = None
-        self._retriever: object | None = None
-        self._llm: object | None = None
-        self._cache: object | None = None
+        # Subsystems
+        self.indexer = Indexer(
+            config=self.config,
+            llm=self.llm,
+            embedder=self.embedder,
+        )
+        self.retrieval: RetrievalEngine | None = None  # wired after tree/graph ready
+
+    # ── Indexing ────────────────────────────────
 
     def index(self, fragment: MemoryFragment) -> None:
-        """Index a single memory fragment into the hybrid structure."""
-        raise NotImplementedError("Indexing pipeline not yet implemented.")
+        """Index a single memory fragment synchronously."""
+        import asyncio
+        return asyncio.run(self.indexer.index(fragment))
 
     def index_batch(self, fragments: list[MemoryFragment]) -> None:
-        """Index a batch of fragments."""
-        for frag in fragments:
-            self.index(frag)
-
-    def query(self, question: str, **kwargs) -> RetrievalResult:
-        """Answer a question using the hybrid memory structure."""
-        raise NotImplementedError("Retrieval pipeline not yet implemented.")
+        """Index a batch synchronously."""
+        import asyncio
+        return asyncio.run(self.indexer.index_batch(fragments))
 
     def consolidate(self) -> None:
         """Trigger tree consolidation."""
-        raise NotImplementedError("Consolidation not yet implemented.")
+        import asyncio
+        return asyncio.run(self.indexer.consolidate())
+
+    # ── Query ───────────────────────────────────
+
+    def query(self, question: str) -> RetrievalResult:
+        """Answer a question synchronously."""
+        import asyncio
+        if self.retrieval is None:
+            self.retrieval = RetrievalEngine(
+                config=self.config,
+                llm=self.llm,
+                tree=self.indexer.get_tree(),
+                graph=self.indexer.get_graph(),
+                embedder=self.embedder,
+            )
+        return asyncio.run(self.retrieval.query(question))
+
+    # ── Properties ─────────────────────────────
+
+    def get_tree(self) -> TemporalSemanticTree:
+        return self.indexer.get_tree()
+
+    def get_graph(self) -> KnowledgeGraph:
+        return self.indexer.get_graph()
+
+    @property
+    def stats(self) -> dict:
+        return self.indexer.stats()
 
     def reset(self) -> None:
         """Clear all indexed memory."""
-        # TODO: wipe tree, graph, cache, vector store
-        pass
+        self.indexer.reset()
+        self.retrieval = None
+
+    # ── Persistence ───────────────────────────────
+
+    def save(self, dir_path: str) -> None:
+        self.indexer.save(dir_path)
+
+    def load(self, dir_path: str) -> None:
+        import asyncio
+        self.indexer = asyncio.run(
+            Indexer.load(dir_path, self.config, self.llm)
+        )
+        self.retrieval = None
+
+    # ── Private ───────────────────────────────────
+
+    def _init_llm(self) -> LLMAdapter:
+        provider = self.config.llm_provider
+        if provider == "openrouter":
+            return OpenRouterAdapter(self.config)
+        raise NotImplementedError(f"LLM provider '{provider}' not yet wired. Add in llm/ package.")
