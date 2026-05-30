@@ -62,15 +62,15 @@ class LLMAdapter(ABC):
     PROMPT_EXTRACT_ENTITIES = """\nExtract all entities and their relationships from the following text.
 
 Return strictly valid JSON with this structure:
-{
+{{
   "entities": [
-    {"name": "Alice", "type": "person"},
-    {"name": "Acme Corp", "type": "organization"}
+    {{"name": "Alice", "type": "person"}},
+    {{"name": "Acme Corp", "type": "organization"}}
   ],
   "relations": [
-    {"source": "Alice", "target": "Acme Corp", "type": "works_for"}
+    {{"source": "Alice", "target": "Acme Corp", "type": "works_for"}}
   ]
-}
+}}
 
 Entity types: person, organization, location, product, event, concept, date, other.
 Only include important entities with real information. No generics.
@@ -94,11 +94,11 @@ SUMMARY:
     PROMPT_DECOMPOSE = """\nDecompose the following user question into sub-questions.
 Each sub-question should address one aspect of the main query.
 Return strictly valid JSON:
-{
+{{
   "sub_queries": [
-    {"text": "sub question 1", "scope": "SHORT|LONG|MIXED"}
+    {{"text": "sub question 1", "scope": "SHORT|LONG|MIXED"}}
   ]
-}
+}}
 
 QUESTION:
 {query}

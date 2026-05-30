@@ -9,7 +9,7 @@ Wraps the TemporalSemanticTree from core/ and adds:
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -40,7 +40,7 @@ class TreeBuilder:
         self._tree = tree or TemporalSemanticTree(
             similarity_threshold=config.tree_similarity_threshold,
             max_depth=config.tree_max_depth,
-            time_window_max_seconds=config.tree_time_window_max_seconds,
+            time_window_max=timedelta(seconds=config.tree_time_window_max_seconds),
         )
 
         # Track batch + fragments not yet consolidated
