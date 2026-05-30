@@ -10,6 +10,7 @@ from hmem.llm.adapter import LLMAdapter
 from hmem.llm.openrouter import OpenRouterAdapter
 from hmem.retrieval.engine import RetrievalEngine
 from hmem.types import MemoryFragment, RetrievalResult
+from hmem.utils.async_helpers import run_sync
 from hmem.utils.embeddings import SentenceEmbedder
 
 
@@ -33,24 +34,20 @@ class HMemEngine:
 
     def index(self, fragment: MemoryFragment) -> None:
         """Index a single memory fragment synchronously."""
-        import asyncio
-        return asyncio.run(self.indexer.index(fragment))
+        run_sync(self.indexer.index(fragment))
 
     def index_batch(self, fragments: list[MemoryFragment]) -> None:
         """Index a batch synchronously."""
-        import asyncio
-        return asyncio.run(self.indexer.index_batch(fragments))
+        run_sync(self.indexer.index_batch(fragments))
 
     def consolidate(self) -> None:
         """Trigger tree consolidation."""
-        import asyncio
-        return asyncio.run(self.indexer.consolidate())
+        run_sync(self.indexer.consolidate())
 
     # ── Query ───────────────────────────────────
 
     def query(self, question: str) -> RetrievalResult:
         """Answer a question synchronously."""
-        import asyncio
         if self.retrieval is None:
             self.retrieval = RetrievalEngine(
                 config=self.config,
@@ -59,7 +56,7 @@ class HMemEngine:
                 graph=self.indexer.get_graph(),
                 embedder=self.embedder,
             )
-        return asyncio.run(self.retrieval.query(question))
+        return run_sync(self.retrieval.query(question))
 
     # ── Properties ─────────────────────────────
 
@@ -84,10 +81,7 @@ class HMemEngine:
         self.indexer.save(dir_path)
 
     def load(self, dir_path: str) -> None:
-        import asyncio
-        self.indexer = asyncio.run(
-            Indexer.load(dir_path, self.config, self.llm)
-        )
+        self.indexer = run_sync(Indexer.load_async(dir_path, self.config, self.llm))
         self.retrieval = None
 
     # ── Private ───────────────────────────────────
@@ -96,4 +90,14 @@ class HMemEngine:
         provider = self.config.llm_provider
         if provider == "openrouter":
             return OpenRouterAdapter(self.config)
-        raise NotImplementedError(f"LLM provider '{provider}' not yet wired. Add in llm/ package.")
+        from hmem.llm.openai import OpenAIAdapter
+
+        if provider == "openai":
+            return OpenAIAdapter(self.config)
+        from hmem.llm.anthropic import AnthropicAdapter
+
+        if provider == "anthropic":
+            return AnthropicAdapter(self.config)
+        raise NotImplementedError(
+            f"LLM provider '{provider}' not yet wired. Supported: openrouter, openai, anthropic"
+        )

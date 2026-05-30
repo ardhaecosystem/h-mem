@@ -90,3 +90,37 @@ class SentenceEmbedder:
     def dim(self) -> int:
         """Dimensionality of the embedding vectors."""
         return self._embedding_dim
+
+
+class DummyEmbedder:
+    """Deterministic dummy embedder for smoke tests (no LLM / no model download)."""
+
+    def __init__(self, dim: int = 8) -> None:
+        self._dim = dim
+
+    def embed(self, texts: str | list[str]) -> np.ndarray:
+        if isinstance(texts, str):
+            texts = [texts]
+            single = True
+        else:
+            single = False
+        # Deterministic pseudo-random embeddings via string hash
+        arr = np.array(
+            [[hash(t + str(i)) % 1000 / 1000.0 for i in range(self._dim)] for t in texts],
+            dtype=np.float32,
+        )
+        # L2-normalize
+        norms = np.linalg.norm(arr, axis=1, keepdims=True) + 1e-8
+        arr = arr / norms
+        if single:
+            arr = arr[0]
+        return arr
+
+    async def encode_async(self, texts: str | list[str]) -> np.ndarray:
+        """Async wrapper that runs encoding in a thread pool."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, lambda: self.embed(texts))
+
+    @property
+    def dim(self) -> int:
+        return self._dim
