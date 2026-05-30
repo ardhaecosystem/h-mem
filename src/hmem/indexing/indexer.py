@@ -130,7 +130,7 @@ class Indexer:
         )
 
     @classmethod
-    async def load(
+    async def load_async(
         cls,
         dir_path: str | Path,
         config: HMemConfig,
@@ -160,6 +160,9 @@ class Indexer:
             tree_builder=tree_builder,
             graph_builder=graph_builder,
         )
+
+    # Backwards-compat alias
+    load = load_async
 
     # ── Reset ─────────────────────────────────
 

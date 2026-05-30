@@ -234,18 +234,13 @@ class TemporalSemanticTree:
 
     def _parents_at_level(self, level: int) -> list[NodeID]:
         """Return all node IDs that have children at the given level."""
-        results = []
-        for node_id, node in self._nodes.items():
-            if node.level < level:  # could be parent
-                has_child = any(
-                    self._nodes.get(cid, TreeNode(id="", level=-1, time_window_start=datetime.utcnow(), time_window_end=datetime.utcnow(), text="")).level == level
-                    for cid in self._children.get(node_id, [])
-                )
-                if has_child:
+        results: list[NodeID] = []
+        for node_id, children in self._children.items():
+            for cid in children:
+                child = self._nodes.get(cid)
+                if child and child.level == level:
                     results.append(node_id)
-        # For root nodes at this level: they are their own parent
-        if not results:
-            results = [nid for nid in self._roots if self._nodes.get(nid, TreeNode(id="", level=-1)).level == level]
+                    break
         return results
 
     @staticmethod
