@@ -1,9 +1,10 @@
 # H-Mem
 
-A memory system for LLM agents that **learns** — not just stores.
-
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![](https://img.shields.io/badge/arXiv-2605.15701-red)](https://arxiv.org/abs/2605.15701)
+
+A memory system for LLM agents that **learns** — not just stores.
 
 ## What It Is
 
@@ -13,7 +14,7 @@ H-Mem is a hybrid memory mechanism for long-lived LLM agents. Instead of treatin
 
 | Component | What It Does |
 |-----------|-------------|
-| **Temporal-Semantic Tree** | Short-term conversations progressively consolidate into long-term summaries |
+| **Temporal-Semantic Tree** | Short-term conversations progressly consolidate into long-term summaries |
 | **Knowledge Graph** | Entities and relationships extracted for multi-hop reasoning |
 | **Adaptive Retrieval Planner** | Per-query: decompose, select scope (SHORT/LONG/MIXED), and trigger follow-up when evidence is insufficient |
 
@@ -55,11 +56,11 @@ from hmem import HMem, MemoryFragment
 
 hmem = HMem()
 
-# Add memory fragments as they happen
 for convo_turn in conversation_history:
     hmem.index(MemoryFragment(
         text=convo_turn,
         timestamp=convo_timestamp,
+        source_type=SourceType.CONVERSATION,
         metadata={"session_id": session_id}
     ))
 
@@ -76,12 +77,16 @@ answer = hmem.query(
 print(answer)
 ```
 
-### 4. Evaluate on Benchmarks
+### 4. Evaluate
 
 ```bash
-hmem benchmark --dataset locom
-hmem benchmark --dataset longmemeval
-hmem benchmark --dataset realtalk
+# Download benchmark datasets
+python scripts/download_datasets.py
+
+# Run evaluation
+python -m hmem.evaluation.harness --dataset locom
+python -m hmem.evaluation.harness --dataset longmemeval
+python -m hmem.evaluation.harness --dataset realtalk
 ```
 
 ---
@@ -91,22 +96,30 @@ hmem benchmark --dataset realtalk
 ```
 hmem/
 ├── core/
-│   ├── memory_fragment.py    # Atomic unit of memory
+│   ├── types.py              # Pydantic types (MemoryFragment, TreeNode, Entity, Relation)
 │   ├── tree.py               # Temporal-semantic tree
 │   └── graph.py              # Knowledge graph (NetworkX)
 ├── indexing/
 │   ├── tree_builder.py       # Incremental tree construction
-│   ├── graph_builder.py      # Entity/relation extraction + graph
-│   └── consolidator.py       # Bottom-up memory consolidation
+│   ├── graph_builder.py      # Entity/relation extraction
+│   └── indexer.py            # Orchestrates offline indexing
 ├── retrieval/
 │   ├── planner.py            # Query decomposition + scope prediction
-│   ├── tree_search.py        # Temporal/semantic evidence search
+│   ├── tree_search.py        # Hierarchical tree search
 │   ├── graph_search.py       # Multi-hop entity traversal
-│   └── synthesizer.py        # Sub-answer → final answer
+│   ├── reranker.py           # Semantic reranking
+│   ├── synthesizer.py        # Answer synthesis
+│   └── engine.py             # Full retrieval orchestration
 ├── llm/
-│   └── adapter.py            # Pluggable LLM backend (OpenRouter, OpenAI, Anthropic, local)
-└── evaluation/
-    └── harness.py            # Benchmark evaluation (LoCoMo, LongMemEval, REALTALK)
+│   ├── adapter.py            # Base LLM adapter
+│   ├── openrouter.py         # OpenRouter adapter (default)
+│   ├── openai.py             # OpenAI adapter
+│   └── anthropic.py          # Anthropic adapter
+├── evaluation/
+│   ├── datasets/             # Benchmark loaders
+│   ├── harness.py            # Evaluation runner
+│   └── metrics.py            # F1, LLM-Judge, etc.
+└── cli.py                    # Typer CLI
 ```
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full design spec.
@@ -115,23 +128,12 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full design spec.
 
 ## LLM Backends
 
-H-Mem ships with adapters for:
-
 | Provider | Env Var | Status |
 |----------|---------|--------|
-| **OpenRouter** | `OPENROUTER_API_KEY` | ✅ Default — cheapest access to GPT-4o-mini / 4.1-mini |
+| OpenRouter | `OPENROUTER_API_KEY` | ✅ Default |
 | OpenAI | `OPENAI_API_KEY` | ✅ Direct |
-| Anthropic | `ANTHROPIC_API_KEY` | ✅ Claude 3.5 Sonnet / 4 |
+| Anthropic | `ANTHROPIC_API_KEY` | ✅ Direct |
 | Local (vLLM/Ollama) | `LOCAL_LLM_URL` | ✅ Self-hosted |
-
-The LLM is used for:
-- **Entity/relation extraction** (graph construction)
-- **Temporal-semantic consolidation** (tree merging)
-- **Retrieval planning** (query decomposition, scope prediction)
-- **Missing-information detection** (follow-up query generation)
-- **Answer synthesis** (sub-answer → final)
-
-All LLM calls are batched where possible and cached to reduce cost.
 
 ---
 
@@ -139,42 +141,26 @@ All LLM calls are batched where possible and cached to reduce cost.
 
 This repo includes evaluation harnesses for all three benchmarks from the paper:
 
-| Benchmark | Conversations | Avg Turns | Sessions | Focus |
-|-----------|---------------|-----------|----------|-------|
-| **LoCoMo** | 1,200+ | 300 | Up to 35 | Long-term QA |
-| **LongMemEvalS** | Multi-session | 100s | Multiple | Multi-session reasoning |
-| **REALTALK** | 21-day real-world | 100s+ | Continuous | Realistic noise + persona |
-
-```bash
-# Download datasets
-python scripts/download_datasets.py
-
-# Run full evaluation
-python -m hmem.evaluation.harness --dataset all --model openrouter/gpt-4o-mini
-```
+| Benchmark | Description | Status |
+|-----------|-------------|--------|
+| **LoCoMo** | Very long-term conversational memory (up to 35 sessions) | 🔄 Loader |
+| **LongMemEvalS** | Long-term interactive memory (115K tokens/session) | 🔄 Loader |
+| **REALTALK** | 21-day real-world human conversations | 🔄 Loader |
 
 ---
 
-## Configuration
+## Development
 
-```python
-from hmem import HMemConfig
+```bash
+git clone https://github.com/ardhaecosystem/h-mem.git
+cd h-mem
+pip install -e ".[dev]"
 
-config = HMemConfig(
-    llm_provider="openrouter",           # or "openai", "anthropic", "local"
-    llm_model="openai/gpt-4o-mini",
-    embedding_model="sentence-transformers/all-MiniLM-L6-v2",
-    embedding_dim=384,
-    tree_similarity_threshold=0.75,       # For consolidation
-    tree_max_depth=4,                    # Leaf = short-term, root = long-term
-    graph_entity_threshold=2,            # Min mentions to be salient
-    retrieval_top_k=10,
-    retrieval_workflows=True,           # Enable adaptive planner
-    missing_info_retrieval=True,         # Enable follow-up retrieval
-    cache_dir=".cache/hmem",
-)
+# Run smoke test (no LLM required)
+python -m tests.smoke_test
 
-hmem = HMem(config)
+# Run full benchmarks
+python -m hmem.evaluation.harness --dataset all
 ```
 
 ---
@@ -183,13 +169,13 @@ hmem = HMem(config)
 
 | Phase | Target | Status |
 |-------|--------|--------|
-| 1. Core structures | Tree + graph working with toy data | 🔄 In progress |
-| 2. Indexing pipeline | Full offline indexing + consolidation | ⏳ Planned |
-| 3. Retrieval pipeline | Planner + evidence search + synthesis | ⏳ Planned |
-| 4. LLM abstraction | OpenRouter + pluggable backends | ⏳ Planned |
-| 5. Benchmarks | LoCoMo, LongMemEval, REALTALK | ⏳ Planned |
-| 6. Optimization | Batch processing, async, caching | ⏳ Planned |
-| 7. Release | PyPI + docs + benchmark reproduction | ⏳ Planned |
+| Core structures | Tree + Graph + Types | ✅ Done |
+| Indexing pipeline | Offline indexing + consolidation | ✅ Done |
+| Retrieval pipeline | Planner + Search + Synthesis | ✅ Done |
+| LLM abstraction | OpenRouter / OpenAI / Anthropic | ✅ Done |
+| Benchmarks | Data loaders + evaluation harness | 🔄 In progress |
+| Optimization | Batch processing, async, caching | ⏳ Planned |
+| Release | PyPI + docs | ⏳ Planned |
 
 ---
 
