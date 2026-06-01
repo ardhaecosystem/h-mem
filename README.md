@@ -196,10 +196,8 @@ This open-source implementation is an independent community effort.
 
 ---
 
-<div align="center">
+<div align="left">
 
-MIT License — see [LICENSE](LICENSE).
-
-Built with 🔥 by [Humanth & Veda](https://github.com/ardhaecosystem).
+MIT [LICENSE](LICENSE). Built by [Humanth & Veda](https://github.com/ardhaecosystem).
 
 </div>
